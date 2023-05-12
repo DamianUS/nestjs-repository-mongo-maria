@@ -1,11 +1,33 @@
 version: '3.9'
 services:
+  mariadb:
+    image: docker.io/bitnami/mariadb:10.5
+    env_file:
+      - .env.dockermariadb
+    ports:
+      - "3306:3306"
+    volumes:
+      - 'mariadb_data:/bitnami/mariadb'
+    environment:
+      # ALLOW_EMPTY_PASSWORD is recommended only for development.
+      - ALLOW_EMPTY_PASSWORD=yes
+      - MARIADB_USER=${DATABASE_USER}
+      - MARIADB_PASSWORD=${DATABASE_PASSWORD}
+      - MARIADB_DATABASE=${DATABASE_NAME}
+      - MARIADB_SKIP_TEST_DB=yes
+    healthcheck:
+      test: [ 'CMD', '/opt/bitnami/scripts/mariadb/healthcheck.sh' ]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+    networks:
+      - backend
   mongodb:
     image: zcube/bitnami-compat-mongodb:latest
     env_file:
-      - .env.docker
+      - .env.dockermongodb
     ports:
-      - ${DATABASE_PORT}:${DATABASE_PORT}
+      - "27017:27017"
     volumes:
       - 'mongodb_data:/bitnami/mongodb'
     environment:
@@ -18,7 +40,7 @@ services:
       - backend
   backend:
     env_file:
-      - .env.docker
+      - .env
     build:
       context: ./
       target: dev
@@ -26,16 +48,17 @@ services:
       - .:/src
       - node_modules:/src/node_modules
     command: >
-      sh -c "pwd && npm install && /wait && npm run start:debug"
+      sh -c "pwd && npm install && /wait && npm run start:debug:${DATABASE}"
     ports:
       - "${APP_PORT}:${APP_PORT}"
       - "${DEBUG_PORT}:${DEBUG_PORT}"
     depends_on:
       - mongodb
+      - mariadb
     environment:
       NODE_ENV: development
       DEBUG: backend:*
-      WAIT_HOSTS: mongodb:27017
+      WAIT_HOSTS: mongodb:27017, mariadb:3306
       WAIT_HOSTS_TIMEOUT: 300
       WAIT_SLEEP_INTERVAL: 3
       WAIT_HOST_CONNECT_TIMEOUT: 5
@@ -45,6 +68,8 @@ networks:
   backend:
     driver: bridge
 volumes:
+  mariadb_data:
+    driver: local
   mongodb_data:
     driver: local
   node_modules:
